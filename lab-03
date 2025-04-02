@@ -1,0 +1,236 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <stdbool.h>
+
+#define MAX_PROCESS 10
+
+// Structure to hold process information
+typedef struct {
+    int id;
+    int burst_time;
+    float priority;
+} Task;
+
+// Global variables for process data
+int num_of_process;
+int execution_time[MAX_PROCESS], period[MAX_PROCESS], remain_time[MAX_PROCESS];
+int deadline[MAX_PROCESS], remain_deadline[MAX_PROCESS];
+
+// Function to get process information from the user
+void get_process_info(int selected_algo) {
+    printf("Enter total number of processes (maximum %d): ", MAX_PROCESS);
+    scanf("%d", &num_of_process);
+    if (num_of_process < 1) {
+        exit(0);
+    }
+
+    for (int i = 0; i < num_of_process; i++) {
+        printf("\nProcess %d:\n", i + 1);
+        printf("==> Execution time: ");
+        scanf("%d", &execution_time[i]);
+        remain_time[i] = execution_time[i];
+
+        if (selected_algo == 2) {  // EDF
+            printf("==> Deadline: ");
+            scanf("%d", &deadline[i]);
+        } else {  // RMS
+            printf("==> Period: ");
+            scanf("%d", &period[i]);
+        }
+    }
+}
+
+// Function to get the maximum of three values
+int max(int a, int b, int c) {
+    return (a >= b && a >= c) ? a : (b >= a && b >= c) ? b : c;
+}
+
+// Function to determine the observation time based on the selected algorithm
+int get_observation_time(int selected_algo) {
+    if (selected_algo == 1) {  // RMS
+        return max(period[0], period[1], period[2]);
+    } else if (selected_algo == 2) {  // EDF
+        return max(deadline[0], deadline[1], deadline[2]);
+    }
+    return 0;
+}
+
+// Function to calculate and print CPU utilization
+void print_cpu_utilization(int total_time) {
+    float total_execution_time = 0;
+    for (int i = 0; i < num_of_process; i++) {
+        total_execution_time += execution_time[i];
+    }
+
+    float cpu_utilization = (total_execution_time / total_time) * 100;
+    printf("\nCPU Utilization: %.2f%%\n", cpu_utilization);
+}
+
+// Function to print the scheduling result
+void print_schedule(int process_list[], int cycles) {
+    printf("\nScheduling:\n\n");
+    printf("Time: ");
+    for (int i = 0; i < cycles; i++) {
+        printf("| %2d ", i);
+    }
+    printf("|\n");
+
+    for (int i = 0; i < num_of_process; i++) {
+        printf("P[%d]:", i + 1);
+        for (int j = 0; j < cycles; j++) {
+            if (process_list[j] == i + 1) {
+                printf("|####");
+            } else {
+                printf("|    ");
+            }
+        }
+        printf("|\n");
+    }
+
+    print_cpu_utilization(cycles);
+}
+
+// Rate Monotonic Scheduling Algorithm
+void rate_monotonic(int time) {
+    int process_list[100] = {0};
+    int min = 999, next_process = 0;
+    float utilization = 0;
+
+    // Calculate system utilization
+    for (int i = 0; i < num_of_process; i++) {
+        utilization += (1.0 * execution_time[i]) / period[i];
+    }
+
+    // Check if the system is schedulable
+    int n = num_of_process;
+    float m = n * (pow(2, 1.0 / n) - 1);
+    if (utilization > m) {
+        printf("\nGiven problem is not schedulable under the Rate Monotonic scheduling algorithm.\n");
+        return;
+    }
+
+    // Rate Monotonic scheduling
+    for (int i = 0; i < time; i++) {
+        min = 1000;
+        for (int j = 0; j < num_of_process; j++) {
+            if (remain_time[j] > 0 && min > period[j]) {
+                min = period[j];
+                next_process = j;
+            }
+        }
+
+        if (remain_time[next_process] > 0) {
+            process_list[i] = next_process + 1;
+            remain_time[next_process]--;
+        }
+
+        // Reset remaining time for processes that have completed their period
+        for (int k = 0; k < num_of_process; k++) {
+            if ((i + 1) % period[k] == 0) {
+                remain_time[k] = execution_time[k];
+                next_process = k;
+            }
+        }
+    }
+
+    print_schedule(process_list, time);
+}
+
+// Earliest Deadline First Scheduling Algorithm
+void earliest_deadline_first(int time) {
+    int process_list[100] = {0};
+    bool is_ready[num_of_process];
+    int current_process = -1;
+    int min_deadline, max_deadline = deadline[0];
+
+    // Calculate system utilization
+    float utilization = 0;
+    for (int i = 0; i < num_of_process; i++) {
+        utilization += (1.0 * execution_time[i]) / deadline[i];
+    }
+
+    // Sort processes based on their deadlines
+    for (int i = 0; i < num_of_process; i++) {
+        is_ready[i] = true;
+    }
+
+    // Initialize process execution times and deadlines
+    for (int i = 0; i < num_of_process; i++) {
+        remain_time[i] = execution_time[i];
+        remain_deadline[i] = deadline[i];
+    }
+
+    // Find the maximum deadline
+    for (int i = 1; i < num_of_process; i++) {
+        if (deadline[i] > max_deadline) {
+            max_deadline = deadline[i];
+        }
+    }
+
+    // EDF scheduling
+    for (int t = 0; t < time; t++) {
+        if (current_process != -1) {
+            remain_time[current_process]--;
+            process_list[t] = current_process + 1;
+        } else {
+            process_list[t] = 0;
+        }
+
+        for (int i = 0; i < num_of_process; i++) {
+            if (--deadline[i] <= 0 && is_ready[i]) {
+                deadline[i] += remain_deadline[i];
+                is_ready[i] = false;
+            }
+
+            if (deadline[i] <= remain_deadline[i] && !is_ready[i]) {
+                remain_time[i] = execution_time[i];
+                is_ready[i] = true;
+            }
+        }
+
+        min_deadline = max_deadline;
+        current_process = -1;
+
+        // Select the process with the earliest deadline
+        for (int i = 0; i < num_of_process; i++) {
+            if (deadline[i] <= min_deadline && remain_time[i] > 0) {
+                current_process = i;
+                min_deadline = deadline[i];
+            }
+        }
+    }
+
+    print_schedule(process_list, time);
+}
+
+// Main function
+int main() {
+    int option;
+    int observation_time;
+
+    while (1) {
+        printf("\n1. Rate Monotonic\n2. Earliest Deadline First\n3. Exit\n\nEnter your choice: ");
+        scanf("%d", &option);
+
+        switch (option) {
+            case 1:
+                get_process_info(option);
+                observation_time = get_observation_time(option);
+                rate_monotonic(observation_time);
+                break;
+            case 2:
+                get_process_info(option);
+                observation_time = get_observation_time(option);
+                earliest_deadline_first(observation_time);
+                break;
+            case 3:
+                exit(0);
+            default:
+                printf("\nInvalid choice.\n");
+        }
+    }
+
+    return 0;
+}
+
